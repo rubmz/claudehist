@@ -66,5 +66,4 @@ Windows, Linux, Mac and Cheese (Mac not tested... Should work, but I don't have 
 - The hook is designed to never interfere with Claude — if anything goes wrong, it fails silently
 
 ## Disclaimer
-NSFW - Use at your own discretion! I take no responsibility for any failure/misbehvior of this script.
-It is simply a placeholder until Anthropic come to their senses and add "/history" into claude code...
+Use at your own discretion! It is simply a placeholder until Anthropic come to their senses and add "/history" into claude code...
