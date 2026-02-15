@@ -8,16 +8,24 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 # Create virtual environment if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
     echo "Creating virtual environment..."
-    python3 -m virtualenv "$VENV_DIR"
+    python3 -m venv "$VENV_DIR"
 fi
 
 # Activate and install dependencies
 source "$VENV_DIR/bin/activate"
 echo "Installing Python dependencies..."
-pip install PyQt6 PyWinCtl
+pip install PyQt6
 
 # Run setup (hook registration) using the venv Python
 python "$SCRIPT_DIR/setup.py"
+
+# Install /history command to ~/.claude/commands/
+CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
+mkdir -p "$CLAUDE_COMMANDS_DIR"
+sed -e "s|CLAUDEHIST_VENV_PLACEHOLDER|$VENV_DIR|g" \
+    -e "s|CLAUDEHIST_DIR_PLACEHOLDER|$SCRIPT_DIR|g" \
+    "$SCRIPT_DIR/commands/history.md" > "$CLAUDE_COMMANDS_DIR/history.md"
+echo "Installed /history command to $CLAUDE_COMMANDS_DIR/history.md"
 
 echo ""
 echo "Virtual environment created at: $VENV_DIR"

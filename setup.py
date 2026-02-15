@@ -26,7 +26,7 @@ def get_hook_command():
     if system == "Windows":
         return f"python \"{hook_script}\""
     else:
-        return f"python3 {hook_script}"
+        return f"python3 \"{hook_script}\""
 
 
 def main():
