@@ -350,8 +350,9 @@ class NumericTableItem(QTableWidgetItem):
 
 
 class ReviewApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, last_project=None):
         super().__init__()
+        self._last_project = last_project
         self.setWindowTitle("Claude Code Session Diff Reviewer")
         self.resize(1200, 600)
 
@@ -411,6 +412,46 @@ class ReviewApp(QMainWindow):
         self._refresh_timer = QTimer(self)
         self._refresh_timer.timeout.connect(self._check_refresh)
         self._refresh_timer.start(5000)
+
+        # If launched with --last, auto-open the most recent diff after the event loop starts
+        if self._last_project:
+            QTimer.singleShot(100, lambda: self.open_last_for_project(self._last_project, refresh=False))
+
+    def open_last_for_project(self, project_path, refresh=True):
+        """Find the most recent file-editing prompt for project_path and open its diff."""
+        if refresh:
+            # Force-refresh data (bypass fingerprint cache) — needed when
+            # called via socket from a second instance, but not on first launch
+            # where data was just loaded in __init__.
+            result, fp = load_prompts()
+            if result is not None:
+                self.all_prompts = result
+                self._fingerprint = fp
+                self._update_project_combo()
+                self.populate()
+
+        # Filter to prompts matching this project with file edits
+        candidates = [
+            p for p in self.all_prompts
+            if p.get("files_edited") and p.get("project_path", "").rstrip("/") == project_path.rstrip("/")
+        ]
+        if not candidates:
+            QMessageBox.information(self, "No changes found",
+                                    f"No file-editing prompts found for project:\n{project_path}")
+            return
+
+        # Sort by timestamp descending, pick the most recent
+        candidates.sort(key=lambda p: p.get("timestamp", ""), reverse=True)
+        prompt = candidates[0]
+
+        before_files, after_files = _reconstruct_prompt_diff(
+            prompt["jsonl_path"], prompt["prompt_index"]
+        )
+        if not before_files and not after_files:
+            QMessageBox.information(self, "Cannot reconstruct",
+                                    "Could not reconstruct file states for the most recent prompt.")
+            return
+        open_diff(before_files, after_files, parent=self)
 
     def _update_project_combo(self):
         projects = sorted({format_project(p["project_path"]) for p in self.all_prompts if p["project_path"]})
@@ -540,16 +581,49 @@ class ReviewApp(QMainWindow):
 _SOCKET_NAME = "claude_session_diff_reviewer"
 
 
+def _parse_last_arg():
+    """Return the project path if --last <path> was passed, else None."""
+    try:
+        idx = sys.argv.index("--last")
+        return sys.argv[idx + 1]
+    except (ValueError, IndexError):
+        return None
+
+
+def _raise_window(window):
+    """Bring the window to front on all platforms."""
+    try:
+        import pywinctl as pwc
+        wins = pwc.getWindowsWithTitle(window.windowTitle())
+        if wins:
+            wins[0].minimize()
+            wins[0].restore()
+            return
+    except Exception:
+        pass
+
+    window.setWindowState(
+        window.windowState() & ~Qt.WindowState.WindowMinimized
+    )
+    window.show()
+    window.raise_()
+    window.activateWindow()
+
+
 def main():
     app = QApplication(sys.argv)
+    last_project = _parse_last_arg()
 
     # Check if another instance is already running
     socket = QLocalSocket()
     socket.connectToServer(_SOCKET_NAME)
     if socket.waitForConnected(500):
-        # Another instance exists — send activation token so it can request focus
-        token = os.environ.get("XDG_ACTIVATION_TOKEN", "")
-        socket.write(token.encode())
+        # Another instance exists — send message so it can act
+        if last_project:
+            msg = f"LAST:{last_project}"
+        else:
+            msg = os.environ.get("XDG_ACTIVATION_TOKEN", "")
+        socket.write(msg.encode())
         socket.flush()
         socket.waitForBytesWritten(1000)
         socket.disconnectFromServer()
@@ -560,7 +634,7 @@ def main():
     server = QLocalServer()
     server.listen(_SOCKET_NAME)
 
-    window = ReviewApp()
+    window = ReviewApp(last_project=last_project)
     window.show()
 
     def on_new_connection():
@@ -568,31 +642,19 @@ def main():
         if not client:
             return
         client.waitForReadyRead(1000)
-        token = bytes(client.readAll()).decode()
+        data = bytes(client.readAll()).decode()
         client.disconnectFromServer()
 
-        if token:
-            os.environ["XDG_ACTIVATION_TOKEN"] = token
+        if data.startswith("LAST:"):
+            project_path = data[5:]
+            _raise_window(window)
+            window.open_last_for_project(project_path)
+            return
 
-        # Minimize+restore forces the window manager to bring the window
-        # to front on all platforms (Linux X11/Wayland, Windows, macOS)
-        try:
-            import pywinctl as pwc
-            wins = pwc.getWindowsWithTitle(window.windowTitle())
-            if wins:
-                wins[0].minimize()
-                wins[0].restore()
-                return
-        except Exception:
-            pass
+        if data:
+            os.environ["XDG_ACTIVATION_TOKEN"] = data
 
-        # Fallback if PyWinCtl is unavailable
-        window.setWindowState(
-            window.windowState() & ~Qt.WindowState.WindowMinimized
-        )
-        window.show()
-        window.raise_()
-        window.activateWindow()
+        _raise_window(window)
 
     server.newConnection.connect(on_new_connection)
 

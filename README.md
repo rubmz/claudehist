@@ -40,6 +40,14 @@ This opens the session diff reviewer GUI. From there:
 - **Sort** by clicking any column header
 - **Double-click** a session (highlighted in green if it has snapshots) to launch PyCharm's diff view
 
+
+Or run:
+```
+/last
+```
+
+To immediately open the last session for this project.
+
 ## Requirements
 
 - Python 3
@@ -48,7 +56,7 @@ This opens the session diff reviewer GUI. From there:
 
 ## Platform Support
 
-Windows, Linux, Mac and Cheese (Mac not tested... Should work, but I don't have a Mac...)
+Windows, Linux, Mac and Cheese (Mac not tested... Should work, but I don't have a Mac... But you know what they say! Users are the best testers...)
 
 ## How Snapshots Work
 

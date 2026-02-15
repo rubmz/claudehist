@@ -47,6 +47,16 @@ powershell -NoProfile -Command ^
     "Set-Content '%CLAUDE_COMMANDS_DIR%\history.md' $t -NoNewline"
 echo Installed /history command to %CLAUDE_COMMANDS_DIR%\history.md
 
+powershell -NoProfile -Command ^
+    "$t = Get-Content '%SCRIPT_DIR%commands\last.md' -Raw;" ^
+    "$t = $t -replace 'nohup (.+?) > /dev/null 2>&1 &', '$1';" ^
+    "$t = $t -replace 'CLAUDEHIST_VENV_PLACEHOLDER/bin/python', '%VENV_DIR%\Scripts\python.exe';" ^
+    "$t = $t -replace 'CLAUDEHIST_VENV_PLACEHOLDER', '%VENV_DIR%';" ^
+    "$t = $t -replace 'CLAUDEHIST_DIR_PLACEHOLDER', '%SCRIPT_DIR_CLEAN%';" ^
+    "$t = $t -replace '/', '\';" ^
+    "Set-Content '%CLAUDE_COMMANDS_DIR%\last.md' $t -NoNewline"
+echo Installed /last command to %CLAUDE_COMMANDS_DIR%\last.md
+
 echo.
 echo Virtual environment created at: %VENV_DIR%
 echo To launch the GUI, use /history or /last from claude or run: %VENV_DIR%\Scripts\python %SCRIPT_DIR%review_gui.py

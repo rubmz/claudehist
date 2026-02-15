@@ -27,6 +27,11 @@ sed -e "s|CLAUDEHIST_VENV_PLACEHOLDER|$VENV_DIR|g" \
     "$SCRIPT_DIR/commands/history.md" > "$CLAUDE_COMMANDS_DIR/history.md"
 echo "Installed /history command to $CLAUDE_COMMANDS_DIR/history.md"
 
+sed -e "s|CLAUDEHIST_VENV_PLACEHOLDER|$VENV_DIR|g" \
+    -e "s|CLAUDEHIST_DIR_PLACEHOLDER|$SCRIPT_DIR|g" \
+    "$SCRIPT_DIR/commands/last.md" > "$CLAUDE_COMMANDS_DIR/last.md"
+echo "Installed /last command to $CLAUDE_COMMANDS_DIR/last.md"
+
 echo ""
 echo "Virtual environment created at: $VENV_DIR"
 echo "To launch the GUI, run:"

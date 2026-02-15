@@ -2,7 +2,7 @@
 """Setup script for Claude Code Session Diff Tracker.
 
 Adds the PreToolUse hook to ~/.claude/settings.json and installs the
-/history slash command to ~/.claude/commands/history.md.
+/history and /last slash commands to ~/.claude/commands/.
 Safe to run multiple times — skips if already configured.
 """
 
@@ -39,17 +39,25 @@ def get_claude_commands_dir():
     return os.path.join(home, ".claude", "commands")
 
 
-def install_slash_command():
-    """Install the /history slash command to ~/.claude/commands/history.md."""
+def _install_command(name, content):
+    """Install a slash command to ~/.claude/commands/<name>.md."""
     commands_dir = get_claude_commands_dir()
-    cmd_path = os.path.join(commands_dir, "history.md")
+    cmd_path = os.path.join(commands_dir, f"{name}.md")
 
     if os.path.exists(cmd_path):
-        print("/history command already installed.")
+        print(f"/{name} command already installed.")
         return
 
     os.makedirs(commands_dir, exist_ok=True)
 
+    with open(cmd_path, "w") as f:
+        f.write(content)
+
+    print(f"/{name} command installed at: {cmd_path}")
+
+
+def install_slash_commands():
+    """Install the /history and /last slash commands."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     system = platform.system()
 
@@ -60,7 +68,7 @@ def install_slash_command():
 
     gui_script = os.path.join(script_dir, "review_gui.py")
 
-    content = (
+    _install_command("history", (
         "Launch the Claude Code Session Diff Reviewer GUI by running this command in the background:\n"
         "\n"
         "```\n"
@@ -68,12 +76,18 @@ def install_slash_command():
         "```\n"
         "\n"
         "Run it detached so it doesn't block the conversation. Tell the user the history viewer has been launched.\n"
-    )
+    ))
 
-    with open(cmd_path, "w") as f:
-        f.write(content)
-
-    print(f"/history command installed at: {cmd_path}")
+    _install_command("last", (
+        "Open the session history GUI and automatically show the diff for the most recent change in the current project. "
+        "Run this command in the background:\n"
+        "\n"
+        "```\n"
+        f"{venv_python} \"{gui_script}\" --last \"$(pwd)\"\n"
+        "```\n"
+        "\n"
+        "Do not wait for it to finish. Just confirm it was launched.\n"
+    ))
 
 
 def main():
@@ -126,9 +140,9 @@ def main():
 
         print("Hook added successfully.")
 
-    # Install /history slash command
+    # Install slash commands
     print()
-    install_slash_command()
+    install_slash_commands()
 
     print()
     print("Restart Claude Code for changes to take effect.")
