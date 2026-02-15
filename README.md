@@ -1,4 +1,4 @@
-# Claude Code Session History
+# Claude Code Session /History
 
 **See every change Claude made in a single diff — no git required, no digging through local history.**
 
@@ -42,13 +42,13 @@ This opens the session diff reviewer GUI. From there:
 
 ## Requirements
 
-- Python 3
+- Python 3.<a lot>
 - PyCharm (must be available on PATH as `pycharm` or `pycharm-professional`)
 - Claude Code
 
 ## Platform Support
 
-Windows, Linux, and macOS.
+Windows, Linux, Mac and Cheese (Mac not tested... Should work, but I don't have a Mac...)
 
 ## How Snapshots Work
 
