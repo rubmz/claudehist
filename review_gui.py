@@ -37,6 +37,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+def _normalize_path(p):
+    """Normalize a path for comparison across MSYS/Git Bash and Windows formats.
+
+    Handles e.g. '/c/dev/projects/cpm' vs 'C:\\dev\\projects\\cpm'.
+    """
+    if not p:
+        return ""
+    # Convert MSYS-style /c/... to C:/...
+    if re.match(r"^/([a-zA-Z])/", p):
+        p = p[1].upper() + ":" + p[2:]
+    return os.path.normcase(os.path.normpath(p))
+
+
 SNAPSHOTS_DIR = os.path.expanduser("~/.claude/session-snapshots")
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
@@ -83,7 +96,7 @@ def _read_jsonl(jsonl_path):
     """Read a JSONL file and return a list of parsed JSON objects."""
     lines = []
     try:
-        with open(jsonl_path) as f:
+        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
             for raw in f:
                 try:
                     lines.append(json.loads(raw))
@@ -200,6 +213,43 @@ def _reconstruct_prompt_diff(jsonl_path, prompt_index):
                 except OSError:
                     pass
 
+    # For files without snapshots, recover initial state by reading current disk
+    # content and reverse-applying all session edits.
+    files_needing_init = set()
+    for _, tc_name, tc_input in tool_calls:
+        fp = tc_input.get("file_path", "")
+        if fp and fp not in file_states:
+            files_needing_init.add(fp)
+
+    for fp in files_needing_init:
+        # Start from current disk content
+        try:
+            with open(fp, encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except OSError:
+            content = ""
+
+        # Reverse-apply all edits in the session (in reverse order) to recover
+        # the state before the session started
+        for _, tc_name, tc_input in reversed(tool_calls):
+            if tc_input.get("file_path", "") != fp:
+                continue
+            if tc_name == "Write":
+                # A Write overwrote whatever was there — we can't recover beyond it,
+                # so the pre-Write state is unknown; use empty string.
+                content = ""
+                break
+            elif tc_name == "Edit":
+                old = tc_input.get("old_string", "")
+                new = tc_input.get("new_string", "")
+                if new and old is not None:
+                    if tc_input.get("replace_all"):
+                        content = content.replace(new, old)
+                    else:
+                        content = content.replace(new, old, 1)
+
+        file_states[fp] = content
+
     # Walk all tool calls, tracking file states and capturing before/after
     before_files = {}
     files_in_prompt = set()
@@ -227,10 +277,6 @@ def _reconstruct_prompt_diff(jsonl_path, prompt_index):
                     file_states[fp] = file_states[fp].replace(old, new)
                 else:
                     file_states[fp] = file_states[fp].replace(old, new, 1)
-            elif fp not in file_states:
-                # File exists on disk but we don't have its initial state
-                # (no snapshot). Skip this edit — we can't reconstruct.
-                pass
 
         # Stop processing once we're past the target prompt
         if tc_line >= next_line:
@@ -297,10 +343,34 @@ def format_project(path):
 
 
 def find_pycharm():
-    for name in ("pycharm", "pycharm-professional"):
+    for name in ("pycharm", "pycharm-professional", "pycharm64", "pycharm.bat"):
         path = shutil.which(name)
         if path:
             return path
+
+    # On Windows, check the registry for the install location
+    if sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\JetBrains\PyCharm")
+            versions = []
+            for i in range(100):
+                try:
+                    versions.append(winreg.EnumKey(key, i))
+                except OSError:
+                    break
+            for ver in sorted(versions, reverse=True):
+                try:
+                    subkey = winreg.OpenKey(key, ver)
+                    install_dir, _ = winreg.QueryValueEx(subkey, "")
+                    exe = os.path.join(install_dir, "bin", "pycharm64.exe")
+                    if os.path.isfile(exe):
+                        return exe
+                except OSError:
+                    continue
+        except OSError:
+            pass
+
     return None
 
 
@@ -324,7 +394,9 @@ def open_diff(before_files, after_files, parent=None):
     after_dir = tempfile.mkdtemp(prefix="claude_diff_after_")
 
     for filepath in all_paths:
-        rel = filepath.lstrip("/")
+        # Strip drive letter and root so the path is relative (works on both Unix and Windows)
+        drive, tail = os.path.splitdrive(filepath)
+        rel = tail.lstrip("/\\")
 
         dest_before = os.path.join(before_dir, rel)
         os.makedirs(os.path.dirname(dest_before), exist_ok=True)
@@ -433,7 +505,7 @@ class ReviewApp(QMainWindow):
         # Filter to prompts matching this project with file edits
         candidates = [
             p for p in self.all_prompts
-            if p.get("files_edited") and p.get("project_path", "").rstrip("/") == project_path.rstrip("/")
+            if p.get("files_edited") and _normalize_path(p.get("project_path", "")) == _normalize_path(project_path)
         ]
         if not candidates:
             QMessageBox.information(self, "No changes found",
